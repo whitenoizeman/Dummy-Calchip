@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>Chip Dummy Calculator - PWA Mobile</title>
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="DummyChip">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("service-worker.js");
+</script>
+<style>
+body { background:#111; color:#fff; font-family:Arial; margin:0; padding:20px; }
+.container { max-width:500px; margin:auto; background:#1a1a1a; padding:20px; border-radius:16px; }
+input { width:100%; padding:12px; margin:8px 0; background:#222; border:1px solid #444; border-radius:8px; color:#fff; font-size:18px; }
+button { padding:12px; width:48%; margin:4px 1%; border:none; border-radius:10px; font-size:18px; }
+.calc-btn { background:#0af; color:#000; }
+.reset-btn { background:#f33; color:#fff; }
+.save-btn { background:#0f0; color:#000; }
+.history-btn { background:#ff0; color:#000; }
+table { width:100%; margin-top:20px; border-collapse:collapse; }
+td,th { padding:10px; border-bottom:1px solid #333; font-size:18px; }
+.positive { color:#0f0; }
+.negative { color:#f33; }
+@media (orientation: landscape) {
+  body { padding:10px; }
+  .container { max-width:800px; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+<h2>คำนวณชิปดัมมี่ (4 ผู้เล่น)</h2>
+
+<label>พูลละ</label><input id="pool" type="number" value="1">
+
+<label>ผู้เล่น A</label><input id="nameA" placeholder="A">
+<label>คะแนน A</label><input id="scoreA" type="number">
+
+<label>ผู้เล่น B</label><input id="nameB" placeholder="B">
+<label>คะแนน B</label><input id="scoreB" type="number">
+
+<label>ผู้เล่น C</label><input id="nameC" placeholder="C">
+<label>คะแนน C</label><input id="scoreC" type="number">
+
+<label>ผู้เล่น D</label><input id="nameD" placeholder="D">
+<label>คะแนน D</label><input id="scoreD" type="number">
+
+<div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
+<button class="calc-btn" onclick="processCalc()">คำนวณ</button>
+<button class="reset-btn" onclick="resetForm()">ล้างค่า</button>
+<button class="save-btn" onclick="saveHistory()">บันทึกรอบ</button>
+<button class="history-btn" onclick="showHistory()">ประวัติ</button>
+</div>
+</div>
+
+<div class="container" id="resultSection" style="display:none; margin-top:20px;">
+<h2>ผลลัพธ์</h2>
+<table>
+<thead><tr><th>ชื่อ</th><th>คะแนน</th><th>ชิป</th></tr></thead>
+<tbody id="resultBody"></tbody>
+</table>
+
+<h2>สรุปการจ่ายกัน</h2>
+<div id="settle"></div>
+</div>
+
+<div class="container" id="historySection" style="display:none; margin-top:20px;">
+<h2>ประวัติการเล่น</h2>
+<div id="historyList"></div>
+<button class="reset-btn" onclick="clearHistory()">ล้างประวัติทั้งหมด</button>
+</div>
+
+<script>
+function calculateChip(playerScore, otherScores, pool) {
+  let total = 0;
+  for (let s of otherScores) total += (playerScore - s);
+  return total * pool;
+}
+
+function displayResults(players) {
+  const body = document.getElementById('resultBody');
+  body.innerHTML = '';
+  players.forEach(p => {
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${p.name}</td><td>${p.score}</td><td class="${p.chip>0?'positive':p.chip<0?'negative':''}">${p.chip.toFixed(2)}</td>`;
+    body.appendChild(row);
+  });
+}
+
+function settlePayments(players) {
+  let pay = players.filter(p => p.chip < 0).map(p => ({ name:p.name, amount: -p.chip }));
+  let recv = players.filter(p => p.chip > 0).map(p => ({ name:p.name, amount: p.chip }));
+  let log = '';
+
+  pay.forEach(p => {
+    let remaining = p.amount;
+    recv.forEach(r => {
+      if (remaining <= 0) return;
+      let payAmount = Math.min(remaining, r.amount);
+      if (payAmount > 0) {
+        log += `<div>${p.name} ➜ ${r.name} จำนวน ${payAmount.toFixed(2)}</div>`;
+        remaining -= payAmount;
+        r.amount -= payAmount;
+      }
+    });
+  });
+  document.getElementById('settle').innerHTML = log || 'ไม่มีการจ่ายกัน';
+}
+
+function processCalc() {
+  const pool = +document.getElementById('pool').value;
+
+  const players = [
+    { name:nameA.value||'A', score:+scoreA.value },
+    { name:nameB.value||'B', score:+scoreB.value },
+    { name:nameC.value||'C', score:+scoreC.value },
+    { name:nameD.value||'D', score:+scoreD.value }
+  ];
+
+  players.forEach((p,i) => {
+    const others = players.filter((_,idx)=>idx!==i).map(o=>o.score);
+    p.chip = calculateChip(p.score, others, pool);
+  });
+
+  displayResults(players);
+  settlePayments(players);
+  document.getElementById('resultSection').style.display = 'block';
+}
+
+function resetForm() {
+  document.querySelectorAll('input').forEach(i=>i.value='');
+  document.getElementById('resultSection').style.display='none';
+}
+
+function saveHistory() {
+  let history = JSON.parse(localStorage.getItem("dummyHistory") || "[]");
+  history.push({
+    time: new Date().toLocaleString(),
+    html: document.getElementById("resultSection").innerHTML
+  });
+  localStorage.setItem("dummyHistory", JSON.stringify(history));
+  alert("บันทึกรอบแล้ว");
+}
+
+function showHistory() {
+  const list = document.getElementById('historyList');
+  const history = JSON.parse(localStorage.getItem("dummyHistory") || "[]");
+  list.innerHTML = history.map(h => `<div style='border:1px solid #333; padding:10px; margin:10px 0;'>
+    <b>${h.time}</b><br>${h.html}
+  </div>`).join('');
+  document.getElementById('historySection').style.display = 'block';
+}
+
+function clearHistory() {
+  localStorage.removeItem("dummyHistory");
+  document.getElementById("historyList").innerHTML = "";
+}
+</script>
+</body>
+</html>
